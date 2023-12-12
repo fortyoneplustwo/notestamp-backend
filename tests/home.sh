@@ -1,6 +1,6 @@
 #!/bin/bash
 
-domain="http://localhost:3000" 
+domain="http://localhost:8080" 
 username="oli.amb38@gmail.com"
 password="mypassword1"
 filename="upload_file2.txt"

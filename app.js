@@ -1,6 +1,7 @@
 const dotenv = require('dotenv');
 const express = require('express')
-const port = 3000;
+const port = 8080
+const cors = require('cors')
 const mongoose = require('mongoose')
 const authRouter = require('./routes/auth')
 const homeRouter = require('./routes/home')
@@ -8,6 +9,10 @@ const tokenRouter = require('./routes/token')
 const cookieParser = require('cookie-parser')
 
 const app = express()
+
+app.use(cors({
+  origin: 'http://localhost:3000'
+}))
 
 // Import .env file
 dotenv.config();
@@ -20,7 +25,7 @@ app.set('view engine', 'ejs');
 
 // Middleware
 app.use(express.urlencoded({ extended: false}))
-//app.use(express.json())
+app.use(express.json())
 app.use(cookieParser());
 app.use('/auth', authRouter)
 app.use('/home', homeRouter)

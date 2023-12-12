@@ -78,7 +78,7 @@ router.post('/signin', async (req, res) => {
 		res.cookie("accessToken", accessToken, cookieOptions);
 		res.cookie("refreshToken", refreshToken, cookieOptions);
 		// Response
-		res.json(registeredUser);
+		res.status(200).json(registeredUser);
     // TODO: Serve app
 	} catch (err) {
 		console.log(err);

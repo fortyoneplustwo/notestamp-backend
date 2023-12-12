@@ -1,6 +1,6 @@
 #!/bin/bash
 
-domain="http://localhost:3000" 
+domain="http://localhost:6000" 
 username="oli.amb38@gmail.com"
 password="mypassword1"
 filename="upload_file2.txt"
@@ -16,8 +16,8 @@ cat $cookies
 echo "#### done ####"
 echo -e "\n"
 
-# Sleep for 30 seconds to wait for token to expire
-echo '#### 30s countdown for access token to expire... ####'
+# Wait for token to expire
+echo '#### Countdown for access token to expire... ####'
 for i in {10..0}
 do
   sleep 1
