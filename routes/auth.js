@@ -5,14 +5,10 @@ const tokenDB = require("../Token.js");
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const token = require('./tokenRefresh.js')
 // Import .env file
 dotenv.config();
 
-/* Routes */
-// Send login form
-router.get('/', (req, res) => {
-	res.render('login');
-});
 
 // User sign up
 router.post('/register', async (req, res) => {
@@ -21,12 +17,12 @@ router.post('/register', async (req, res) => {
 		const email = req.body.username;
 		const password = req.body.password;
     if (!email || !password) {
-      return res.status(400).send('All fields must be filled');
+      return res.status(400).json('Missing field data')
     }
     // Return if user already registered in database
     const userIsReg = await userDB.findOne({ email });
     if (userIsReg) {
-      return res.status(400).send('This email is registered already');
+      return res.status(409).json('Account already registered')
 		}
 		// Hash password
 		const saltRounds = 10;
@@ -38,10 +34,9 @@ router.post('/register', async (req, res) => {
 			password: hash,
 			salt: salt
 		});
-		// Redirect to login page
-		return res.redirect(302, '/auth');
+		return res.status(200).send('Account created');
   } catch (error) {
-    console.log(error);
+    res.status(500).json(error.message)
   }
 });
 
@@ -57,12 +52,12 @@ router.post('/signin', async (req, res) => {
 		// Return if user account does not exist
 		const registeredUser = await userDB.findOne({ email });
 		if (!registeredUser) {
-			return res.status(400).send('This account does not exist. Please register.');
+			return res.status(404).send('This account does not exist. Please register.');
 		}
 		// Return if password is incorrect
-		const passMatched = await bcrypt.compare(password, registeredUser.password);
+		const passMatched = bcrypt.compare(password, registeredUser.password);
 		if (!passMatched) {
-			return res.status(401).send('Incorrect email or password');
+			return res.status(401).send('Incorrect credentials');
 		}
 		// Authorization (generate tokens)
 		const accessToken = jwt.sign({ clientID: registeredUser._id, email: email },
@@ -74,54 +69,94 @@ router.post('/signin', async (req, res) => {
 			       { expiresIn: process.env.JWT_REF_EXPIRES_IN }
 		);
 		// Set cookie
-		const cookieOptions = { httpOnly: true };
+		const cookieOptions = { httpOnly: true, /* secure: true, */ maxAge: 60*60*1000 };
 		res.cookie("accessToken", accessToken, cookieOptions);
 		res.cookie("refreshToken", refreshToken, cookieOptions);
-		// Response
-		res.status(200).json(registeredUser);
-    // TODO: Serve app
+		// Response ok
+		res.status(200).json(
+      { 
+        email: registeredUser.email,
+        directory: registeredUser.documents
+      }
+    )
 	} catch (err) {
-		console.log(err);
+		return res.status(500).send(err.message);
 	}
 });
 
 // User account deletion
 router.delete('/remove', async (req, res) => {
+  async function postAuthAccountDeletion(decoded) {
+		// Delete user from db
+    try {
+      const user = await userDB.findOneAndDelete({ _id: decoded.clientID });
+      res.status(200).send('Account deleted');
+    } catch (err) {
+      res.status(500).send(err.message) 
+    }
+  }
+
 	// Redirect to login if token is missing
-	const token = req.cookies.token;
-	if (!token) {
+	const accessToken = req.cookies.accessToken;
+	const refreshToken = req.cookies.refreshToken;
+	if (!accessToken || !refreshToken) {
 		return res.redirect(400, '/login');	
 	}
+
+  // JWT authentication
 	try {
-		// Delete user if token is valid
-		const decoded = jwt.verify(token, process.env.JWT_SECRET);
-		const user = await userDB.findOneAndDelete({ _id: decoded.clientID });
-		res.json(user);
-	} catch (err) {
-		// Invalid or expired token. Redirect to login.
-		console.log(err);
-		res.redirect(401, '/login');
-	}
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
+    postAuthAccountDeletion(decoded)
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      const decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { ignoreExpiration: true })
+      // Request fresh tokens 
+      token.getFreshTokens(refreshToken)
+        .then(result => {
+          if (!result) return res.status(401).send('Token revoked')
+          postAuthAccountDeletion(decoded)
+        })
+    } else {
+      return res.status(401).send(err.message)
+    }
+  }
+  ``
 });
 
 // User log out
 router.delete('/signout', async (req, res) => {
-  // Return if tokens are undefined
-  const accessToken = req.cookies.accessToken;
-  const refreshToken = req.cookies.accessToken;
-  if (!accessToken || !refreshToken) return res.status(400).send('Tokens undefined');
-  try {
-    // Verify access token
-		const decode = jwt.verify(accessToken, process.env.JWT_SECRET);
-    // Invalidate refresh token
-    const result = await tokenDB.create({ clientID: decode.clientID, signature: refreshToken.split('.')[2] });
+  async function postAuthLogOut(decoded) {
+    // Revoke refresh token by pushing it to token db
+    const result = await tokenDB.create({ clientID: decoded.clientID, signature: refreshToken.split('.')[2] });
     // Clear cookies
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
     // JSON response
-    return res.json(result);
+    return res.status(200).send('Signed out')
+  }
+  
+  // Validation
+  const accessToken = req.cookies.accessToken;
+  const refreshToken = req.cookies.accessToken;
+  if (!accessToken || !refreshToken) return res.status(400).json('Tokens undefined');
+  
+  // JWT authentication
+	try {
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
+    postAuthLogOut(decoded)
   } catch (err) {
-    console.log(err);
+    if (err.name === 'TokenExpiredError') {
+      const decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { ignoreExpiration: true })
+      // Request fresh tokens 
+      // If suceeds, then the request is authorized
+      token.getFreshTokens(refreshToken)
+        .then(result => {
+          if (!result) return res.status(401).send('Token revoked')
+          postAuthLogOut(decoded)
+        })
+    } else {
+      return res.status(401).send(err.message)
+    }
   }
 });
 
