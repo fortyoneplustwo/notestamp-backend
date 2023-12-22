@@ -7,6 +7,12 @@ To implement a REST API that handles account creation and cloud storage for my n
 - MongoDB
 - Amazon S3
 
+# Authentication
+- User session is maintained through JWTs sent as cookies. The cookies cannot be accessed by client side scripting and are sent only over a secure connection.
+- I have implemented a token refresh mechanism that follows conventions and keeps a log of revoked tokens in a database.
+
+  *Note*: Need to implement a regular cleanup of the revoked tokens database.
+
 # Schema
 User schema holds account information including an array of objects containing metadata of their saved projects. MongoDB's document storage paradigm fits this schema well.
 
@@ -16,11 +22,12 @@ Note files and media files are stored in two separate S3 buckets. A file's path 
 *Insight*: In case the user wants to have several projects with the same media, we want to avoid storing copies of large media files. Therefore separating the metadata (on the database)
 from the project files (on the file system) allows multiple projects to point to the same media file.
 
-# Authentication
-- User session is maintained through JWTs sent as cookies. The cookies cannot be accessed by client side scripting and are sent only over a secure connection.
-- I have implemented a token refresh mechanism that follows conventions and keeps a log of revoked tokens in a database.
+# API
+`POST /auth/register`: Create an account with payload data
+Payload: JSON containing email and password.
 
-  *Note*: Need to implement a regular cleanup of the revoked tokens database.
+#
+
 
 # Takeaways
 - Asynchronous programming can be tricky. Keep it simple and avoid deeply nested logic.
