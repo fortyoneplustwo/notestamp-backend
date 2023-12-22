@@ -1,5 +1,5 @@
 # Motivation
-To implement a REST API that handles account creation and cloud storage for my note taking application, [notestamp][github.com/fortyoneplustwo/notestamp).
+To implement a REST API that handles account creation and cloud storage for my note taking application, [notestamp](github.com/fortyoneplustwo/notestamp).
 
 # Tech Stack
 - NodeJS
