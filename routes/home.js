@@ -15,21 +15,19 @@ const bucketName = 'timestampdocsbucket';
 // Upload a document to S3
 router.post('/upload', async (req, res) => {
   async function postAuthSaveProject(decoded) {
-    // Upload to s3
-    try {
+    try { // Upload to bucket and save metadata in db
       const user = await userDB.findOne({ _id: decoded.clientID });
-      const key = user._id + '/' + title; // TODO: add subdir for security reasons
+      const key = user._id + '/' + title; // generate unique file path
       s3.upload(({ Bucket: bucketName, Key: key, Body: stmp }),
          async function (err, _) {
           if (err) return res.status(500).send('Save failed')
-          // Insert new project in user's directory
           for (const proj of user.documents) {
             if (proj.title === title) {
-              // Overwrite any other project meta data here...
+              // Overwrite any other project meta data here
+              user.documents = [{ title: title }, ...user.documents];
               return res.status(200).send('File ovewrite succeded')
             }
           }
-          user.documents = [{ title: title }, ...user.documents];
           await user.save();
           return res.status(200).send(user.documents)
         }
@@ -51,9 +49,6 @@ router.post('/upload', async (req, res) => {
   // JWT authentication
 	try {
     const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
-    // const options = { httpOnly: true, /* secure: true, */ maxAge: 60*60*1000 }
-    // res.cookie('accessToken', accessToken, options)
-    // res.cookie('refreshToken' ,refreshToken, options)
     postAuthSaveProject(decoded)
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
