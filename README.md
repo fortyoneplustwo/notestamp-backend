@@ -17,7 +17,7 @@ To implement a REST API that handles account creation and cloud storage for my n
 User schema includes a list of saved projects (metadata). MongoDB's document storage paradigm fits this schema well.
 
 # File storage
-Content files i.e. notes and media are stored in S3 buckets (one for notes files, the other for media files). A file's path is not stored in the user schema, but rather at run time on the server.
+Content files i.e. notes and media are stored in S3 buckets (one for notes files, the other for media files). A file's path is not stored in the user schema, but rather computed at run time on the server.
 
 *Insight*: In case the user wants to have several projects with the same media, we want to avoid storing copies of large media files. Therefore separating the metadata (on the database)
 from the content files (on the file system) allows multiple projects to point to the same media file.
