@@ -24,13 +24,19 @@ from the content files (on the file system) allows multiple projects to point to
 
 # API
 `POST /auth/register` Create an account with payload data.
+
 `POST /auth/signin` Sign in to an existing account. Sets cookies and returns user data.
+
 `DELETE /auth/signout` Sign out of account. Refresh token gets revoked.
+
 `DELETE /auth/remove` Delete user account.
 
 `POST /home/upload` Save a project. If project does not exist, create a new one. Returns updated directory.
+
 `GET /home/open` Get project data. Returns project metadata from database and content from file system.
+
 `GET /home/list` Return a list of the user's projects.
+
 `DELETE /home/delete` Delete a project. Returns updated directory.
 
 # Takeaways
