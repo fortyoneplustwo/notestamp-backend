@@ -9,7 +9,7 @@ Backend server that handles account creation and cloud storage through a REST AP
 
 # Authentication
 - User session is maintained through JWTs sent as cookies. The cookies cannot be accessed by client side scripting and are sent only over a secure connection.
-- Token refresh is implemented in most routes so the user doesn't have to directly request it themselves. Revoked tokens (on sign out) are stored in a database.
+- Token refresh is implemented in most routes so the user doesn't have to directly request it. Revoked tokens (on sign out) are stored in a database.
 
   *Note*: Need to implement a regular cleanup of the revoked tokens database.
 
