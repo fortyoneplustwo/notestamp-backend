@@ -14,20 +14,24 @@ To implement a REST API that handles account creation and cloud storage for my n
   *Note*: Need to implement a regular cleanup of the revoked tokens database.
 
 # Schema
-User schema holds account information including an array of objects containing metadata of their saved projects. MongoDB's document storage paradigm fits this schema well.
+User schema includes a list of saved projects (metadata). MongoDB's document storage paradigm fits this schema well.
 
 # File storage
-Note files and media files are stored in two separate S3 buckets. A file's path is not stored in the user schema, but rather computed by the backend upon each request.
+Content files i.e. notes and media are stored in S3 buckets (one for notes files, the other for media files). A file's path is not stored in the user schema, but rather at run time on the server.
 
 *Insight*: In case the user wants to have several projects with the same media, we want to avoid storing copies of large media files. Therefore separating the metadata (on the database)
-from the project files (on the file system) allows multiple projects to point to the same media file.
+from the content files (on the file system) allows multiple projects to point to the same media file.
 
 # API
-`POST /auth/register`: Create an account with payload data
-Payload: JSON containing email and password.
+`POST /auth/register` Create an account with payload data.
+`POST /auth/signin` Sign in to an existing account. Sets cookies and returns user data.
+`DELETE /auth/signout` Sign out of account. Refresh token gets revoked.
+`DELETE /auth/remove` Delete user account.
 
-#
-
+`POST /home/upload` Save a project. If project does not exist, create a new one. Returns updated directory.
+`GET /home/open` Get project data. Returns project metadata from database and content from file system.
+`GET /home/list` Return a list of the user's projects.
+`DELETE /home/delete` Delete a project. Returns updated directory.
 
 # Takeaways
 - Asynchronous programming can be tricky. Keep it simple and avoid deeply nested logic.
