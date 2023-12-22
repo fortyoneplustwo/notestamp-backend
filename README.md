@@ -23,7 +23,7 @@ Content files i.e. notes and media are stored in S3 buckets (one for notes files
 from the content files (on the file system) allows multiple projects to point to the same media file.
 
 # API
-`POST /auth/register` Create an account with payload data.
+`POST /auth/register` Create an account with email and password.
 
 `POST /auth/signin` Sign in to an existing account. Sets cookies and returns user data.
 
