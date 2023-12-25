@@ -1,10 +1,8 @@
 const express = require('express');
 const userDB = require("../User.js");
-const multer = require('multer');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const AWS = require('aws-sdk');
-const fs = require('fs');
 const token = require('./tokenRefresh.js');
 
 // Connect to AWS
@@ -17,17 +15,12 @@ router.post('/upload', async (req, res) => {
   async function postAuthSaveProject(decoded) {
     try { // Upload to bucket and save metadata in db
       const user = await userDB.findOne({ _id: decoded.clientID });
-      const key = user._id + '/' + title; // generate unique file path
-      s3.upload(({ Bucket: bucketName, Key: key, Body: stmp }),
+      const key = user._id + '/' + metadata.title; // generate unique file path
+      s3.upload(({ Bucket: bucketName, Key: key, Body: content }),
          async function (err, _) {
           if (err) return res.status(500).send('Save failed')
-          for (const proj of user.documents) {
-            if (proj.title === title) {
-              // Overwrite any other project meta data here
-              user.documents = [{ title: title }, ...user.documents];
-              return res.status(200).send('File ovewrite succeded')
-            }
-          }
+          const withoutProj = user.documents.filter(proj => proj.title !== metadata.title)
+          user.documents = [{ ...metadata }, ...withoutProj];
           await user.save();
           return res.status(200).send(user.documents)
         }
@@ -38,11 +31,13 @@ router.post('/upload', async (req, res) => {
   }
 
   // Validation
-  const stmp = req.body.stmp;
-  const title = req.body.title;
+  // const stmp = req.body.content;
+  // const title = req.body.metadata.title;
+  const metadata = req.body.metadata
+  const content = req.body.content
   const accessToken = req.cookies.accessToken;
   const refreshToken = req.cookies.refreshToken;
-  if (stmp === null) return res.status(400).send('No upload file received');
+  if (!metadata || content === null) return res.status(400).send('No upload file received');
   if (!accessToken || !refreshToken) return res.status(400).send('Token undefined');
 
   
@@ -83,6 +78,7 @@ router.get('/open', async(req, res) => {
       s3.getObject({Bucket: bucketName, Key: key}, (err, data) => {
         if (err) throw err;
         return res.status(200).json({
+          metadata: { ...project },
           content: data.Body.toString()
         })
       });
