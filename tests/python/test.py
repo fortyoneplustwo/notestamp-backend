@@ -64,13 +64,13 @@ assert result.status_code == 200
 # print(result.status_code)
 # print(result.text)
 
-# delete file
-# params = {
-#         'name': title
-#         }
-# result = session.delete(api + '/home/delete', params=params)
-# print('Delete file response = ', result.json(), '\n')
-# assert result.status_code == 200
+delete file
+params = {
+        'name': title
+        }
+result = session.delete(api + '/home/delete', params=params)
+print('Delete file response = ', result.json(), '\n')
+assert result.status_code == 200
 
 
 # Log out
