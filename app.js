@@ -5,13 +5,13 @@ const cors = require('cors')
 const mongoose = require('mongoose')
 const authRouter = require('./routes/auth')
 const homeRouter = require('./routes/home')
-const tokenRouter = require('./routes/token')
 const cookieParser = require('cookie-parser')
 
 const app = express()
 
 app.use(cors({
-  origin: 'http://localhost:3000'
+  origin: 'http://localhost:3000',
+  credentials: true
 }))
 
 // Import .env file
@@ -20,20 +20,16 @@ dotenv.config();
 // Connect to database
 mongoose.connect("mongodb://localhost/timestampdb");
 
-// Set view engine
-app.set('view engine', 'ejs');
-
 // Middleware
-app.use(express.urlencoded({ extended: false}))
 app.use(express.json())
+app.use(express.urlencoded({ extended: true}))
 app.use(cookieParser());
 app.use('/auth', authRouter)
 app.use('/home', homeRouter)
-app.use('/token', tokenRouter)
 
 // Routes
-app.get('/', (req, res) => {
-  res.send('Homepage of timestamp backend')
+app.get('/', (_, res) => {
+  res.send('Homepage of notestamp backend')
 })
 
 // Create server and assign port
