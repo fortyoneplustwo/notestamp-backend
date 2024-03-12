@@ -2,3 +2,5 @@
 .env
 tests/bash
 credentials.json
+tests/python/FretboardTheory.pdf
+tests/python/document.stmp

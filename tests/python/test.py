@@ -44,27 +44,27 @@ print(result.status_code)
 print(result.text)
 assert result.status_code == 200
 
-# Save file with media
-# mediafile = 'FretboardTheory.pdf'
-# formdata = {'mediaFile': open(mediafile, 'rb')}
-#
-# metadata =  {
-#             "title": "file with pdf",
-#             "type": "pdf",
-#             "label": "PDF Reader",
-#             "src": ""
-#             }
-# payload = {
-#         "metadata": metadata,
-#         "content": content
-#         }
-#
-# print('Save file with pdf')
-# result = session.post(api + '/home/uploadFile', json=payload, files=formData)
-# print(result.status_code)
-# print(result.text)
 
-delete file
+# Save file with media
+filename = 'FretboardTheory.pdf'
+metadata =  {
+            "title": "file with pdf",
+            "type": "pdf",
+            "label": "PDF Reader",
+            "src": ""
+            }
+files = {
+        'mediaFile': (filename, open(filename, 'rb'), 'application/pdf'),
+        'metadata': (None, json.dumps(metadata), 'application/json'),
+        'content': (None, json.dumps(content))
+        }
+print('Save file with pdf')
+result = session.post(api + '/home/uploadFile', files=files)
+print(result.status_code)
+print(result.text)
+
+
+# delete file
 params = {
         'name': title
         }

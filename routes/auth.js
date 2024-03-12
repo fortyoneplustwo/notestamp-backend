@@ -9,7 +9,6 @@ const token = require('./tokenRefresh.js')
 // Import .env file
 dotenv.config();
 
-
 // User sign up
 router.post('/register', async (req, res) => {
   try {
@@ -120,7 +119,6 @@ router.delete('/remove', async (req, res) => {
       return res.status(401).send(err.message)
     }
   }
-  ``
 });
 
 // User log out
@@ -134,12 +132,12 @@ router.delete('/signout', async (req, res) => {
     // JSON response
     return res.status(200).send('Signed out')
   }
-  
+
   // Validation
   const accessToken = req.cookies.accessToken;
   const refreshToken = req.cookies.accessToken;
   if (!accessToken || !refreshToken) return res.status(400).json('Tokens undefined');
-  
+
   // JWT authentication
 	try {
     const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)

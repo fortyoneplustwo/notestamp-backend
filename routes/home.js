@@ -14,32 +14,34 @@ const bucketName = 'timestampdocsbucket';
 // multipart form data middleware
 const upload = multer()
 
-router.post('/uploadFile', upload.single('mediaFile'), async (req, res) => {
+// Save project metadata to db and upload content and media to s3.
+router.post('/upload', upload.single('mediaFile'), async (req, res) => {
   const postAuthSaveWithMediaFile = async decoded => {
     try {
-      // Attempt save to s3
+      // Attempt content upload to s3. On success, attempt media upload to s3.
       const user = await userDB.findOne({ _id: decoded.clientID });
-      let contentKey = `${user._id}/${metadata.title}.stmp`
+      const contentKey = `${user._id}/${metadata.title}.stmp`
       s3.upload(({ Bucket: bucketName, Key: contentKey, Body: content }), async (err, _) => {
-        if (err) return res.status(500).send(err)
+        if (err) throw err
+
         if (mediaFile) {
-          const mediaExtension = metadata.type === 'pdf' ? '.pdf' : ''
-          const mediaKey = `${user._id}/${metadata.title}${mediaExtension}`
-          s3.upload(({ Bucket: bucketName, Key: mediaKey, Body: mediaFile }), async (err, _) => {
+          const mediaKey = `${user._id}/${metadata.title}.${metadata.mimetype.split('/')[1]}`
+          s3.upload(({ Bucket: bucketName, Key: mediaKey, Body: mediaFile.buffer }), async (err, _) => {
             if (err) {
               s3.deleteObject({ Bucket: bucketName, Key: contentKey }, async(err, _) => {
-                if (err) throw err;
+                if (err) throw err
               });
-              return res.status(500).send(err)
+              throw err
             }
-            // Update db 
-            const projectIndex = user.documents.findIndex(project => project.title === metadata.title)
-            if (projectIndex !== -1) user.documents.splice(projectIndex, 1)
-            user.documents = [{ ...metadata }, ...user.documents]
-            await user.save()
-            return res.status(200).send(user.documents)
           })
         }
+
+        // Update db 
+        const projectIndex = user.documents.findIndex(project => project.title === metadata.title)
+        if (projectIndex !== -1) user.documents.splice(projectIndex, 1)
+        user.documents = [ metadata, ...user.documents]
+        await user.save()
+        return res.status(200).send(user.documents)
       })
     } catch (err) {
       res.status(500).send(err.message)
@@ -47,13 +49,12 @@ router.post('/uploadFile', upload.single('mediaFile'), async (req, res) => {
   } 
 
   // Validation
-  const metadata = req.body.metadata
+  const metadata = JSON.parse(req.body.metadata)
   const content = req.body.content
   const mediaFile = req.file
   const accessToken = req.cookies.accessToken;
   const refreshToken = req.cookies.refreshToken;
-  if (!metadata || content === null) return res.status(400).send('No upload file received');
-  console.log('mediaFile', req.file)
+  if (!metadata || content === null) return res.status(400).send('Upload file(s) missing from request');
   if (!accessToken || !refreshToken) return res.status(400).send('Token undefined');
 
   // JWT authentication
@@ -63,7 +64,6 @@ router.post('/uploadFile', upload.single('mediaFile'), async (req, res) => {
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
       const decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { ignoreExpiration: true })
-      // Request fresh tokens
       token.getFreshTokens(refreshToken)
         .then(result => {
           if (!result) return res.status(401).send('Token revoked')
@@ -78,76 +78,26 @@ router.post('/uploadFile', upload.single('mediaFile'), async (req, res) => {
   }
 })
 
-// Upload a document to S3
-router.post('/upload', async (req, res) => {
-  async function postAuthSaveProject(decoded) {
-    try {
-      // Upload editor content to s3
-      const user = await userDB.findOne({ _id: decoded.clientID });
-      const key = user._id + '/' + metadata.title; // TODO: add subdir for security reasons
-      s3.upload(({ Bucket: bucketName, Key: key, Body: content }), async function (err, _) {
-          if (err) return res.status(500).send(err)
-          // Update db
-          const projectIndex = user.documents.findIndex(project => project.title === metadata.title)
-          if (projectIndex !== -1) user.documents.splice(projectIndex, 1); 
-          user.documents = [{ ...metadata }, ...user.documents];
-          await user.save();
-          return res.status(200).send(user.documents)
-      })
-    } catch (err) {
-      res.status(500).send(err.message)
-    }
-  }
 
-  // Validation
-  const metadata = req.body.metadata
-  const content = req.body.content
-  const accessToken = req.cookies.accessToken;
-  const refreshToken = req.cookies.refreshToken;
-  if (!metadata || content === null) return res.status(400).send('No upload file received');
-  console.log(metadata)
-  if (!accessToken || !refreshToken) return res.status(400).send('Token undefined');
-
-  // JWT authentication
-	try {
-    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
-    postAuthSaveProject(decoded)
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      const decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { ignoreExpiration: true })
-      // Request fresh tokens
-      token.getFreshTokens(refreshToken)
-        .then(result => {
-          if (!result) return res.status(401).send('Token revoked')
-          const options = { httpOnly: true, /* secure: true, */ maxAge: 60*60*1000 }
-          res.cookie('accessToken', result.accessToken, options)
-          res.cookie('refreshToken' ,result.refreshToken, options)
-          postAuthSaveProject(decoded)
-        })
-    } else {
-      return res.status(401).send(err.message)
-    }
-  }
-});
-
-// GET a project from user's directory
-// title -> { metadata, content }
+// Return a project from user's directory i.e. the metadata, notes content 
+// and (possibly) a media stream endpoint.
 router.get('/open', async(req, res) => {
   async function postAuthGetProjectData(decoded) {
-    // Check that requested doc exists in user's account
     try {
+      // Get project from db
       const user = await userDB.findOne({ _id: decoded.clientID });
       const project = user.documents.find(proj => proj.title === filename)
       if (!project) return res.status(404).send('Requested document does not exist');
 
       // Retrieve file from S3 bucket
-      const key = user._id + '/' + filename;
+      const key = user._id + '/' + filename + '.stmp'
       s3.getObject({Bucket: bucketName, Key: key}, (err, data) => {
         if (err) throw err;
-        console.log(project)
-        console.log(data.Body.toString())
         return res.status(200).json({
-          metadata: { ...project },
+          metadata: { 
+            ...project,
+            src: project.type === 'audio' ? 'http://localhost:8080/home/stream-audio' : project.src
+          },
           content: data.Body.toString()
         })
       });
@@ -170,7 +120,6 @@ router.get('/open', async(req, res) => {
     postAuthGetProjectData(decoded)
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
-      // Request fresh tokens
       token.getFreshTokens(refreshToken)
         .then(result => {
           if (!result) return res.status(401).send('Token revoked')
@@ -188,11 +137,125 @@ router.get('/open', async(req, res) => {
   }
 });
 
-// Get list of user's projects
+
+// Return a media file from s3
+router.get('/media-file/:filename', async(req, res) => {
+  async function postAuthGetMediaFile(decoded) {
+    try {
+      // Get project from db
+      const user = await userDB.findOne({ _id: decoded.clientID });
+      const project = user.documents.find(proj => proj.title === filename)
+      if (!project) return res.status(404).send('Requested document does not exist');
+
+      // Retrieve file from S3 bucket
+      const key = `${user._id}/${filename}.${project.mimetype.split('/')[1]}` 
+      s3.getObject({Bucket: bucketName, Key: key}, (err, data) => {
+        if (err) throw err;
+        res.setHeader('Content-Type', data.ContentType);
+        return res.status(200).send(data.Body)
+      });
+    } catch (err) {
+      return res.status(500).send(err.message)
+    }
+  }
+
+  // Validation
+	const accessToken = req.cookies.accessToken;
+  const refreshToken = req.cookies.refreshToken;
+  const { filename }= req.params
+	if (!accessToken || !refreshToken || !filename) {
+		return res.status(400).json('Either token expired or request parameters missing')
+	}
+
+  // JWT authentication
+	try {
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
+    postAuthGetMediaFile(decoded)
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      token.getFreshTokens(refreshToken)
+        .then(result => {
+          if (!result) return res.status(401).send('Token revoked')
+          const options = { httpOnly: true, secure: true, maxAge: 60*60*1000 }
+          res.cookie('accessToken', result.accessToken, options)
+          res.cookie('refreshToken' ,result.refreshToken, options)
+          const decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { 
+            ignoreExpiration: true
+          })
+          postAuthGetMediaFile(decoded)
+        })
+    } else {
+      return res.status(401).send(err.message)
+    }
+  }
+});
+
+
+// Return a media stream from s3
+router.get('/stream-audio/:filename', async(req, res) => {
+  const postAuthGetMediaStream = async () => {
+    try {
+      // Get project metadata from db
+      const user = await userDB.findOne({ _id: decoded.clientID });
+      const project = user.documents.find(proj => proj.title === filename)
+      if (!project) return res.status(404).send('Requested document does not exist');
+
+      // Get audio file from s3 and create a stream
+      const key = `${user._id}/${filename}.${project.mimetype.split('/')[1]}`
+      const s3Stream = s3.getObject({Bucket: bucketName, Key: key})
+      .createReadStream()
+      .on('error', error => {
+        if (error) return res.status(500).send(error.message)
+      })
+
+      // Return stream 
+      res.set({
+        'Content-Type': project.mimetype,
+      })
+
+      s3Stream.pipe(res)
+    } catch (err) {
+      return res.status(500).send(err.message)
+    }
+  }
+
+  // Validation
+	const accessToken = req.cookies.accessToken;
+  const refreshToken = req.cookies.refreshToken;
+  const { filename } = req.params
+	if (!accessToken || !refreshToken || !filename) {
+		return res.status(400).json('Either token expired or request parameters missing')
+	}
+
+  // JWT authentication
+  let decoded = null
+	try {
+    decoded = jwt.verify(accessToken, process.env.JWT_SECRET)
+    postAuthGetMediaStream()
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      try {
+        const newTokens = await token.getFreshTokens(refreshToken)
+        if (!result) return res.status(401).send('Token revoked')
+        const options = { httpOnly: true, secure: true, maxAge: 60*60*1000 }
+        res.cookie('accessToken', newTokens.accessToken, options)
+        res.cookie('refreshToken' ,newTokens.refreshToken, options)
+        decoded = jwt.verify(accessToken, process.env.JWT_SECRET, { ignoreExpiration: true })
+        postAuthGetMediaStream()
+      } catch (error) {
+        return res.status(401).send(error.message)
+      }
+    } else {
+      return res.status(401).send(err.message)
+    }
+  }
+})
+
+
+// Return a list of user's projects
 router.get('/list', async(req, res) => {
   async function postAuthGetProjectsDir(decoded) {
     try {
-    // Get list of projects
       const user = await userDB.findOne({ _id: decoded.clientID });
       const projects = user.documents;
       res.send(projects);
@@ -227,7 +290,8 @@ router.get('/list', async(req, res) => {
 	}
 });
 
-// Delete a project
+
+// Delete a project and return the updated directory.
 router.delete('/delete', async(req, res) => {
   async function postAuthProjectDelete(decoded) {
     try {
@@ -236,14 +300,21 @@ router.delete('/delete', async(req, res) => {
       const projectIndex = user.documents.findIndex(proj => proj.title === filename)
       if (projectIndex < 0) return res.status(404).send('Project does not exist');
 
-      console.log('about to delete')
-      // Delete project from s3 bucket and user's directory
-      const key = user._id + '/' + filename;
-      s3.deleteObject({ Bucket: bucketName, Key: key }, async(err, _) => {
-        if (err) throw err;
-        user.documents.splice(projectIndex, 1); 
-        await user.save();
-        return res.status(200).json(user.documents); // return updated directory
+      // Delete content and media from s3. If success, delete project from db.
+      const contentKey = user._id + '/' + filename + '.stmp'
+      s3.deleteObject({ Bucket: bucketName, Key: contentKey }, async(err, _) => {
+        if (err) throw err; // TODO: put content back into bucket?
+
+        if (project.mimetype) {
+          const mediaKey = `${user._id}/${filename}.${project.mimetype.split('/')[1]}`
+          s3.deleteObject({ Bucket: bucketName, Key: mediaKey }, async(err, _) => {
+            if (err) throw err // TODO: put content back?
+
+            user.documents.splice(projectIndex, 1); 
+            await user.save();
+            return res.status(200).json(user.documents);
+          })
+        }
       });
     } catch (err) { res.status(500).send(err.message) }
   }
