@@ -6,13 +6,14 @@ const jwt = require('jsonwebtoken');
 const AWS = require('aws-sdk');
 const token = require('./tokenRefresh.js');
 
+// multipart form data middleware
+const upload = multer()
+
 // Connect to AWS
 AWS.config.loadFromPath('./credentials.json');
 const s3 = new AWS.S3();
 const bucketName = 'timestampdocsbucket';
 
-// multipart form data middleware
-const upload = multer()
 
 // Save project metadata to db and upload content and media to s3.
 router.post('/upload', upload.single('mediaFile'), async (req, res) => {
@@ -20,11 +21,15 @@ router.post('/upload', upload.single('mediaFile'), async (req, res) => {
     try {
       // Attempt content upload to s3. On success, attempt media upload to s3.
       const user = await userDB.findOne({ _id: decoded.clientID });
+      const projectIndex = user.documents.findIndex(project => project.title === metadata.title)
+
       const contentKey = `${user._id}/${metadata.title}.stmp`
       s3.upload(({ Bucket: bucketName, Key: contentKey, Body: content }), async (err, _) => {
         if (err) throw err
 
-        if (mediaFile) {
+        // Media file of an existing project cannot be overwritten.
+        // Projects may contain empty media.
+        if (mediaFile && projectIndex === -1) {
           const mediaKey = `${user._id}/${metadata.title}.${metadata.mimetype.split('/')[1]}`
           s3.upload(({ Bucket: bucketName, Key: mediaKey, Body: mediaFile.buffer }), async (err, _) => {
             if (err) {
@@ -37,7 +42,6 @@ router.post('/upload', upload.single('mediaFile'), async (req, res) => {
         }
 
         // Update db 
-        const projectIndex = user.documents.findIndex(project => project.title === metadata.title)
         if (projectIndex !== -1) user.documents.splice(projectIndex, 1)
         user.documents = [ metadata, ...user.documents]
         await user.save()
@@ -82,21 +86,27 @@ router.post('/upload', upload.single('mediaFile'), async (req, res) => {
 // Return a project from user's directory i.e. the metadata, notes content 
 // and (possibly) a media stream endpoint.
 router.get('/open', async(req, res) => {
+  console.log('in')
   async function postAuthGetProjectData(decoded) {
     try {
       // Get project from db
       const user = await userDB.findOne({ _id: decoded.clientID });
       const project = user.documents.find(proj => proj.title === filename)
       if (!project) return res.status(404).send('Requested document does not exist');
+      console.log(project)
 
-      // Retrieve file from S3 bucket
+      // Retrieve notes content file from S3 bucket
       const key = user._id + '/' + filename + '.stmp'
       s3.getObject({Bucket: bucketName, Key: key}, (err, data) => {
         if (err) throw err;
         return res.status(200).json({
           metadata: { 
             ...project,
-            src: project.type === 'audio' ? 'http://localhost:8080/home/stream-audio' : project.src
+            src: project.mimetype
+              ? project.type === 'audio' 
+                ? `http://localhost:8080/home/stream-audio/${project.title}`
+                : `http://localhost:8080/home/media-file/${project.title}`
+              : project.src
           },
           content: data.Body.toString()
         })
@@ -205,12 +215,8 @@ router.get('/stream-audio/:filename', async(req, res) => {
       const s3Stream = s3.getObject({Bucket: bucketName, Key: key})
       .createReadStream()
       .on('error', error => {
-        if (error) return res.status(500).send(error.message)
-      })
-
-      // Return stream 
-      res.set({
-        'Content-Type': project.mimetype,
+        s3Stream.abort()
+        return res.status(500).send(error.message)
       })
 
       s3Stream.pipe(res)
