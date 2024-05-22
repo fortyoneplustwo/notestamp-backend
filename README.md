@@ -8,19 +8,14 @@ Backend server that handles account creation and cloud storage through a REST AP
 - Amazon S3
 
 # Authentication
-- User session is maintained through JWTs sent as cookies. The cookies cannot be accessed by client side scripting and are sent only over a secure connection.
-- Token refresh is implemented in most routes so the user doesn't have to directly request it. Revoked tokens (on sign out) are stored in a database.
-
-  *Note*: Need to implement a regular cleanup of the revoked tokens database.
+- User session is maintained using JWTs sent as cookies. The cookies cannot be accessed by client side scripting and are sent only over a secure connection.
+- Token refresh is implemented in most routes so the client doesn't have to request it directly. Revoked tokens (on sign out) are stored in a database.
 
 # Schema
-User schema includes a list of saved projects (metadata). MongoDB's document storage paradigm fits this schema well.
+User schema includes user data as well the metadata of their saved projects.
 
 # File storage
-Content files i.e. notes and media are stored in S3 buckets (one for notes files, the other for media files). A file's path is not stored in the user schema, but rather computed at run time on the server.
-
-*Insight*: In case the user wants to have several projects with the same media, we want to avoid storing copies of large media files. Therefore separating the metadata (on the database)
-from the content files (on the file system) allows multiple projects to point to the same media file.
+Content files i.e. notes and media files are stored in an S3 bucket. A file's path is not stored in the user schema, but rather computed at run time on the server.
 
 # API
 `POST /auth/register` Create an account with email and password.
@@ -39,8 +34,7 @@ from the content files (on the file system) allows multiple projects to point to
 
 `DELETE /home/delete` Delete a project. Returns updated directory.
 
-# Takeaways
-- Asynchronous programming can be tricky. Keep it simple and avoid deeply nested logic.
-- Make sure to handle all possible errors otherwise it could crash your program.
-- Media retrieval might require a different implementation than notes retrieval e.g. streaming audio directly to the client from the S3 bucket.
-- I'm tempted to rewrite this server in Elixir due to its fault tolerance and concurrency features.
+`GET /home/media-file/:filename` Download a media file from the S3 bucket.
+
+`GET /home/stream-media` Return a stream of a media file from an S3 bucket.
+
